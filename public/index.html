@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EdgeVision Runtime</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07090d;--bg2:#0d1117;--bg3:#111820;--bg4:#18222e;
+  --wire:#1a2b3c;--wire2:#223344;
+  --amber:#f5a623;--amber-lo:rgba(245,166,35,.1);--amber-dim:#7a5010;
+  --green:#00e676;--green-lo:rgba(0,230,118,.08);
+  --red:#ff3b5c;--blue:#29b6f6;
+  --txt:#c4d4e4;--txt2:#6a8098;--txt3:#2a3a4a;
+  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{height:100%}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:13px;height:100%;max-height:100vh;max-height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.025) 3px,rgba(0,0,0,.025) 4px);pointer-events:none;z-index:9999}
+
+/* header */
+.hdr{background:var(--bg2);border-bottom:1px solid var(--wire);padding:10px 20px;display:flex;align-items:center;gap:12px;position:relative}
+.hdr::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,var(--amber),transparent 40%);opacity:.5}
+.hdr-icon{width:28px;height:28px;background:var(--amber-lo);border:1px solid var(--amber-dim);clip-path:polygon(6px 0%,100% 0%,100% calc(100% - 6px),calc(100% - 6px) 100%,0% 100%,0% 6px);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--amber)}
+.hdr-title{font-family:var(--mono);font-size:14px;font-weight:600;letter-spacing:1px;color:var(--txt)}
+.hdr-sub{font-family:var(--mono);font-size:9px;color:var(--amber);letter-spacing:2px;text-transform:uppercase}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.status-pill{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;letter-spacing:.5px;text-transform:uppercase;padding:3px 10px;border-radius:2px;border:1px solid}
+.status-pill.idle{color:var(--txt2);border-color:var(--wire2);background:var(--bg3)}
+.status-pill.loading{color:var(--amber);border-color:var(--amber-dim);background:var(--amber-lo)}
+.status-pill.ready{color:var(--green);border-color:rgba(0,230,118,.3);background:var(--green-lo)}
+.status-pill.running{color:var(--blue);border-color:rgba(41,182,246,.3);background:rgba(41,182,246,.06);animation:bp 1.5s infinite}
+.status-pill.error{color:var(--red);border-color:rgba(255,59,92,.3);background:rgba(255,59,92,.06)}
+@keyframes bp{0%,100%{opacity:1}50%{opacity:.6}}
+.sdot{width:5px;height:5px;border-radius:50%;background:currentColor}
+
+/* main layout — min-height:0 so nested flex children can scroll instead of growing the page */
+.main{flex:1;min-height:0;display:grid;grid-template-columns:1fr 300px;gap:0;overflow:hidden}
+
+/* left - video area */
+.video-area{display:flex;flex-direction:column;padding:16px;gap:12px;min-height:0;overflow-y:auto;overflow-x:hidden;position:relative}
+
+/* source row */
+.source-row{display:flex;gap:8px;align-items:stretch}
+.source-tabs{display:flex;gap:2px;flex-shrink:0}
+.stab{font-family:var(--mono);font-size:9px;letter-spacing:.8px;text-transform:uppercase;padding:6px 12px;border:1px solid var(--wire);border-radius:2px;cursor:pointer;color:var(--txt2);background:var(--bg3);transition:all .1s;white-space:nowrap}
+.stab:hover{color:var(--txt);border-color:var(--wire2)}
+.stab.active{color:var(--amber);border-color:var(--amber-dim);background:var(--amber-lo)}
+.url-input-wrap{flex:1;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--wire);border-radius:2px;padding:0 10px;height:36px}
+.url-input-wrap .pfx{font-family:var(--mono);font-size:9px;color:var(--amber);white-space:nowrap}
+.url-input-wrap input{background:none;border:none;outline:none;font-family:var(--mono);font-size:10px;color:var(--txt);flex:1;min-width:0}
+.url-input-wrap input::placeholder{color:var(--txt3)}
+.load-btn{background:var(--amber-lo);border:1px solid var(--amber-dim);color:var(--amber);font-family:var(--mono);font-size:9px;letter-spacing:.8px;text-transform:uppercase;padding:0 14px;height:36px;cursor:pointer;border-radius:2px;white-space:nowrap;transition:all .1s;flex-shrink:0}
+.load-btn:hover{background:rgba(245,166,35,.18)}
+.load-btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* upload zone */
+.upload-zone{border:1px dashed var(--wire2);border-radius:4px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg3);position:relative}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--amber-dim);background:var(--amber-lo)}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.upload-icon{font-size:28px;margin-bottom:8px;opacity:.5}
+.upload-label{font-family:var(--mono);font-size:10px;letter-spacing:.5px;color:var(--txt2)}
+.upload-sub{font-size:9px;color:var(--txt3);margin-top:4px}
+
+/* video canvas wrapper */
+.canvas-wrap{position:relative;background:#000;border:1px solid var(--wire);border-radius:4px;overflow:hidden;min-height:200px;display:flex;align-items:center;justify-content:center}
+#video-el{width:100%;height:auto;display:block;max-height:480px;object-fit:contain}
+#det-canvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+.canvas-placeholder{font-family:var(--mono);font-size:10px;color:var(--txt3);text-align:center;padding:40px;line-height:2}
+.canvas-placeholder .big{font-size:24px;display:block;margin-bottom:8px;opacity:.3}
+
+/* controls row */
+.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ctrl-btn{background:var(--bg3);border:1px solid var(--wire);color:var(--txt2);font-family:var(--mono);font-size:9px;letter-spacing:.5px;text-transform:uppercase;padding:5px 12px;cursor:pointer;border-radius:2px;transition:all .1s}
+.ctrl-btn:hover{color:var(--txt);border-color:var(--wire2)}
+.ctrl-btn.primary{color:var(--green);border-color:rgba(0,230,118,.3);background:var(--green-lo)}
+.ctrl-btn.primary:hover{background:rgba(0,230,118,.14)}
+.ctrl-btn.danger{color:var(--red);border-color:rgba(255,59,92,.3)}
+.ctrl-btn:disabled{opacity:.3;cursor:not-allowed}
+.conf-wrap{display:flex;align-items:center;gap:7px;margin-left:auto}
+.conf-label{font-family:var(--mono);font-size:9px;color:var(--txt2)}
+input[type=range]{accent-color:var(--amber);width:100px}
+.conf-val{font-family:var(--mono);font-size:9px;color:var(--amber);min-width:28px}
+
+/* fps / stats bar */
+.stats-bar{display:flex;gap:14px;padding:7px 10px;background:var(--bg2);border:1px solid var(--wire);border-radius:2px;font-family:var(--mono);font-size:9px}
+.stat{display:flex;gap:5px;align-items:center}
+.stat-label{color:var(--txt3);letter-spacing:.5px;text-transform:uppercase}
+.stat-val{color:var(--amber);font-weight:600}
+.stat-val.green{color:var(--green)}
+.stat-val.blue{color:var(--blue)}
+
+/* class count donut + breakdown (below stats bar) */
+.stats-breakdown{display:flex;align-items:stretch;gap:14px;padding:10px 12px;background:var(--bg2);border:1px solid var(--wire);border-radius:2px;min-height:96px}
+.stats-breakdown.empty{opacity:.75}
+.donut-visual{position:relative;width:88px;height:88px;flex-shrink:0}
+.donut-ring{width:100%;height:100%;border-radius:50%;background:conic-gradient(var(--wire2) 0turn 1turn);transition:background .2s ease}
+.donut-ring.has-data{-webkit-mask:radial-gradient(farthest-side,transparent 54%,#000 55%);mask:radial-gradient(farthest-side,transparent 54%,#000 55%)}
+.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;font-family:var(--mono)}
+.donut-center-n{font-size:15px;font-weight:600;color:var(--amber);line-height:1}
+.donut-center-l{font-size:7px;color:var(--txt3);letter-spacing:.8px;text-transform:uppercase;margin-top:2px}
+.donut-center-s{font-size:6px;color:var(--txt2);margin-top:3px;letter-spacing:.2px}
+
+.breakdown-main{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
+.breakdown-title{font-family:var(--mono);font-size:7.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--txt3)}
+.breakdown-person{font-family:var(--mono);font-size:9px;color:var(--txt);padding:4px 8px;background:var(--bg3);border:1px solid var(--wire);border-radius:2px;line-height:1.5}
+.breakdown-person strong{color:var(--green)}
+.breakdown-person .pid{display:inline-block;margin-right:6px;padding:0 4px;border-radius:2px;font-size:8px;background:var(--green-lo);color:var(--green);border:1px solid rgba(0,230,118,.25)}
+.breakdown-list{display:flex;flex-direction:column;gap:3px;max-height:72px;overflow-y:auto;font-family:var(--mono);font-size:8.5px}
+.breakdown-list::-webkit-scrollbar{width:3px}
+.breakdown-list::-webkit-scrollbar-thumb{background:var(--wire2)}
+.br-row{display:flex;align-items:center;gap:6px;line-height:1.3}
+.br-swatch{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.br-id{color:var(--txt3);min-width:22px;font-size:7.5px}
+.br-name{color:var(--txt);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.br-cnt{color:var(--amber);font-weight:600;min-width:18px;text-align:right}
+.breakdown-session{margin-top:auto;padding-top:6px;border-top:1px solid var(--wire);font-family:var(--mono);font-size:7.5px;color:var(--txt2);line-height:1.45;max-height:52px;overflow-y:auto}
+.breakdown-session .sess-label{color:var(--txt3);letter-spacing:1px;text-transform:uppercase;font-size:6.5px;margin-bottom:3px}
+
+/* end-of-run summary (session totals) */
+.run-summary-panel{display:none;margin-top:4px;border:1px solid var(--amber-dim);border-radius:4px;background:var(--bg3);overflow:hidden;flex-shrink:0}
+.run-summary-panel.visible{display:block}
+.run-summary-inner{position:relative;padding:12px 14px 10px}
+.run-summary-close{position:absolute;top:6px;right:8px;width:26px;height:26px;border:1px solid var(--wire2);border-radius:2px;background:var(--bg2);color:var(--txt2);font-size:16px;line-height:22px;cursor:pointer;font-family:var(--sans)}
+.run-summary-close:hover{color:var(--txt);border-color:var(--wire)}
+.run-summary-hdr{font-family:var(--mono);font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--amber);margin-bottom:10px;padding-right:28px}
+.run-summary-body{display:flex;gap:14px;align-items:stretch;flex-wrap:wrap}
+.summary-donut-visual{position:relative;width:100px;height:100px;flex-shrink:0}
+.summary-donut-visual .donut-ring{width:100%;height:100%;border-radius:50%;transition:background .25s ease}
+.summary-donut-visual .donut-ring.has-data{-webkit-mask:radial-gradient(farthest-side,transparent 54%,#000 55%);mask:radial-gradient(farthest-side,transparent 54%,#000 55%)}
+.summary-donut-visual .donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--mono);pointer-events:none}
+.summary-donut-visual .donut-center-n{font-size:17px;font-weight:600;color:var(--green)}
+.summary-donut-visual .donut-center-l{font-size:6.5px;color:var(--txt3);letter-spacing:.6px;text-transform:uppercase;margin-top:3px;max-width:72px;text-align:center;line-height:1.2}
+.summary-bars-wrap{flex:1;min-width:140px;max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:5px}
+.summary-bars-wrap::-webkit-scrollbar{width:3px}
+.summary-bars-wrap::-webkit-scrollbar-thumb{background:var(--wire2)}
+.summary-bar-row{display:flex;flex-direction:column;gap:3px;font-family:var(--mono)}
+.summary-bar-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;min-width:0}
+.summary-bar-name{flex:1;min-width:0;color:var(--txt);font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary-bar-name .muted{color:var(--txt3)}
+.summary-bar-cnt{color:var(--amber);font-weight:600;flex-shrink:0;font-size:9px}
+.summary-bar-track{background:var(--bg);border-radius:2px;height:6px;overflow:hidden;border:1px solid var(--wire)}
+.summary-bar-fill{height:100%;border-radius:1px;min-width:2px;transition:width .2s ease}
+
+/* right panel */
+.right-panel{background:var(--bg2);border-left:1px solid var(--wire);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.rp-section{border-bottom:1px solid var(--wire);flex-shrink:0}
+.rp-section.rp-grow{flex:1 1 0;min-height:0;overflow:hidden;display:flex;flex-direction:column;border-bottom:1px solid var(--wire)}
+.rp-grow .rp-hdr{flex-shrink:0}
+.rp-hdr{padding:9px 13px;display:flex;align-items:center;justify-content:space-between}
+.rp-title{font-family:var(--mono);font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--txt3)}
+.rp-count{font-family:var(--mono);font-size:10px;color:var(--amber)}
+
+/* model info */
+.model-info{padding:10px 13px;display:flex;flex-direction:column;gap:5px}
+.mi-row{display:flex;justify-content:space-between;align-items:center}
+.mi-label{font-family:var(--mono);font-size:8.5px;color:var(--txt2)}
+.mi-val{font-family:var(--mono);font-size:8.5px;color:var(--amber);font-weight:600}
+.model-prog{background:var(--bg);border-radius:1px;height:3px;overflow:hidden;margin:4px 0}
+.model-prog-inner{height:100%;background:linear-gradient(90deg,var(--amber),var(--green));border-radius:1px;transition:width .3s}
+
+/* class filter */
+.class-filter{padding:10px 13px;display:flex;flex-wrap:wrap;gap:4px;max-height:150px;overflow-y:auto}
+.class-filter::-webkit-scrollbar{width:3px}
+.class-filter::-webkit-scrollbar-thumb{background:var(--wire2)}
+.ctag{font-family:var(--mono);font-size:7.5px;letter-spacing:.5px;text-transform:uppercase;padding:2px 6px;border-radius:2px;border:1px solid var(--wire);color:var(--txt3);cursor:pointer;transition:all .1s;user-select:none}
+.ctag:hover{border-color:var(--wire2);color:var(--txt2)}
+.ctag.active{color:#000;border-color:transparent;font-weight:600}
+
+/* detection log */
+.det-log{flex:1 1 auto;min-height:0;overflow-y:auto;padding:6px 0;-webkit-overflow-scrolling:touch}
+.det-log::-webkit-scrollbar{width:3px}
+.det-log::-webkit-scrollbar-thumb{background:var(--wire2)}
+.det-item{display:flex;align-items:center;gap:7px;padding:5px 13px;border-bottom:1px solid var(--wire);animation:df .2s ease}
+@keyframes df{from{opacity:0;transform:translateX(4px)}}
+.det-color{width:3px;height:28px;border-radius:1px;flex-shrink:0}
+.det-info{flex:1;min-width:0}
+.det-class{font-family:var(--mono);font-size:9.5px;font-weight:600;color:var(--txt);text-transform:uppercase;letter-spacing:.5px}
+.det-conf{font-family:var(--mono);font-size:8px;color:var(--txt2);margin-top:1px}
+.det-conf-bar{height:2px;border-radius:1px;margin-top:3px;background:var(--wire);overflow:hidden}
+.det-conf-fill{height:100%;border-radius:1px;transition:width .15s}
+.det-bbox{font-family:var(--mono);font-size:7.5px;color:var(--txt3);margin-top:1px}
+
+/* class count summary — cap height so tall lists don’t stretch layout */
+.class-summary{padding:10px 13px;border-top:1px solid var(--wire);flex-shrink:0;max-height:min(340px,42vh);overflow-y:auto}
+.cs-title .cs-scope{color:var(--txt2);font-weight:400;letter-spacing:.5px;text-transform:none}
+.class-summary::-webkit-scrollbar{width:3px}
+.class-summary::-webkit-scrollbar-thumb{background:var(--wire2)}
+.cs-title{font-family:var(--mono);font-size:7.5px;letter-spacing:2px;text-transform:uppercase;color:var(--txt3);margin-bottom:8px}
+.cs-row{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+.cs-dot{width:7px;height:7px;border-radius:2px;flex-shrink:0}
+.cs-label{font-family:var(--mono);font-size:8.5px;color:var(--txt);flex:1}
+.cs-cnt{font-family:var(--mono);font-size:9px;color:var(--amber);font-weight:600}
+.cs-bar-w{flex:1;height:2px;background:var(--wire);border-radius:1px;overflow:hidden}
+.cs-bar-f{height:100%;border-radius:1px}
+
+/* loading overlay */
+.loading-overlay{position:absolute;inset:0;background:rgba(7,9,13,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;z-index:10}
+.loading-spinner{width:32px;height:32px;border:2px solid var(--wire2);border-top-color:var(--amber);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-family:var(--mono);font-size:10px;color:var(--amber);letter-spacing:1px}
+.loading-sub{font-family:var(--mono);font-size:8.5px;color:var(--txt2)}
+
+/* footer */
+.site-footer{flex-shrink:0;border-top:1px solid var(--wire);background:var(--bg2);padding:10px 20px;text-align:center;font-family:var(--mono);font-size:9px;letter-spacing:.5px;color:var(--txt3)}
+.site-footer a{color:var(--amber);text-decoration:none}
+.site-footer a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="hdr">
+  <div class="hdr-icon">◈</div>
+  <div>
+    <div class="hdr-title">EdgeVision Runtime</div>
+    <div class="hdr-sub">Real-time browser-based computer vision engine for ONNX models</div>
+  </div>
+  <div class="hdr-right">
+    <div class="status-pill idle" id="status-pill">
+      <div class="sdot"></div>
+      <span id="status-text">Loading model…</span>
+    </div>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- Left: video + controls -->
+  <div class="video-area">
+
+    <!-- Source selector -->
+    <div class="source-row">
+      <div class="source-tabs">
+        <div class="stab active" id="tab-upload" onclick="switchTab('upload')">↑ Upload</div>
+        <div class="stab" id="tab-url" onclick="switchTab('url')">🔗 URL / YouTube</div>
+      </div>
+    </div>
+
+    <!-- Upload zone -->
+    <div class="upload-zone" id="upload-zone">
+      <input type="file" id="file-input" accept="video/mp4,video/*">
+      <div class="upload-icon">📁</div>
+      <div class="upload-label">Drop MP4 here or click to browse</div>
+      <div class="upload-sub">Any video file · processed frame by frame in browser</div>
+    </div>
+
+    <!-- URL input (hidden by default) -->
+    <div id="url-row" style="display:none">
+      <div class="url-input-wrap">
+        <span class="pfx">URL</span>
+        <input type="text" id="url-input" placeholder="https://youtube.com/watch?v=… or direct .mp4 link">
+      </div>
+      <div style="margin-top:6px;font-family:var(--mono);font-size:8px;color:var(--txt3);line-height:1.8">
+        ⚠ YouTube links require a CORS proxy or a local server due to browser restrictions.<br>
+        Direct .mp4 URLs work if the server sends CORS headers.<br>
+        Easiest: download the MP4 first and use Upload tab.
+      </div>
+    </div>
+    <div id="url-load-row" style="display:none;margin-top:-4px">
+      <button class="load-btn" id="url-load-btn" onclick="loadFromURL()">Load Video</button>
+    </div>
+
+    <!-- Video + canvas -->
+    <div class="canvas-wrap" id="canvas-wrap">
+      <div class="canvas-placeholder" id="placeholder">
+        <span class="big">🎥</span>
+        Upload an MP4 or paste a video URL<br>
+        <span style="font-size:8px">Model loads automatically · runs entirely in your browser</span>
+      </div>
+      <video id="video-el" style="display:none" playsinline muted crossorigin="anonymous"></video>
+      <canvas id="det-canvas"></canvas>
+      <div class="loading-overlay" id="loading-overlay" style="display:none">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loading-text">Loading YOLO model…</div>
+        <div class="loading-sub" id="loading-sub">Loading ONNX weights from this server</div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <button class="ctrl-btn primary" id="btn-play" onclick="toggleDetection()" disabled>▶ Start Detection</button>
+      <button class="ctrl-btn" id="btn-pause" onclick="pauseVideo()" disabled>⏸ Pause</button>
+      <button class="ctrl-btn danger" id="btn-stop" onclick="stopDetection()" disabled>■ Stop</button>
+      <button class="ctrl-btn" onclick="captureFrame()">📷 Capture Frame</button>
+      <div class="conf-wrap">
+        <div class="conf-label">Confidence</div>
+        <input type="range" id="conf-slider" min="1" max="99" value="40" oninput="updateConf(this.value)">
+        <div class="conf-val" id="conf-val">0.40</div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-label">FPS</div><div class="stat-val" id="fps-val">—</div></div>
+      <div class="stat"><div class="stat-label">Detections</div><div class="stat-val green" id="det-count">0</div></div>
+      <div class="stat"><div class="stat-label">Frame</div><div class="stat-val blue" id="frame-num">0</div></div>
+      <div class="stat"><div class="stat-label">Inference</div><div class="stat-val" id="infer-ms">—</div></div>
+      <div class="stat"><div class="stat-label">Model</div><div class="stat-val" id="model-name">YOLOv8n</div></div>
+      <div class="stat"><div class="stat-label">Backend</div><div class="stat-val" id="backend-name">wasm</div></div>
+    </div>
+
+    <!-- Per-class counts: donut + IDs (COCO) + session totals -->
+    <div class="stats-breakdown" id="stats-breakdown">
+      <div class="donut-visual">
+        <div class="donut-ring" id="donut-ring"></div>
+        <div class="donut-center">
+          <span class="donut-center-n" id="donut-frame-total">0</span>
+          <span class="donut-center-l" id="donut-scope-label">this frame</span>
+          <span class="donut-center-s" id="donut-session-total">Σ session: 0</span>
+        </div>
+      </div>
+      <div class="breakdown-main">
+        <div class="breakdown-title">By class · COCO id · count</div>
+        <div class="breakdown-person" id="breakdown-person" style="display:none"></div>
+        <div class="breakdown-list" id="breakdown-list">
+          <span style="color:var(--txt3)">Start detection to see counts.</span>
+        </div>
+        <div class="breakdown-session" id="breakdown-session">
+          <div class="sess-label">Session (adds each frame while running)</div>
+          <span id="breakdown-session-body" style="color:var(--txt3)">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Session totals after Stop / end of video -->
+    <div class="run-summary-panel" id="run-summary-panel" aria-live="polite">
+      <div class="run-summary-inner">
+        <button type="button" class="run-summary-close" onclick="hideRunSummaryPanel()" title="Dismiss">×</button>
+        <div class="run-summary-hdr" id="summary-reason">Run totals</div>
+        <div class="run-summary-body">
+          <div class="summary-donut-visual">
+            <div class="donut-ring" id="summary-donut-ring"></div>
+            <div class="donut-center">
+              <span class="donut-center-n" id="summary-total-num">0</span>
+              <span class="donut-center-l">all object events</span>
+            </div>
+          </div>
+          <div class="summary-bars-wrap" id="summary-bars"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="right-panel">
+
+    <!-- Model info -->
+    <div class="rp-section">
+      <div class="rp-hdr">
+        <div class="rp-title">Model</div>
+        <div class="rp-count" id="model-status-r">Loading…</div>
+      </div>
+      <div class="model-info">
+        <div class="mi-row"><div class="mi-label">Architecture</div><div class="mi-val">YOLOv8n</div></div>
+        <div class="mi-row"><div class="mi-label">Format</div><div class="mi-val">ONNX</div></div>
+        <div class="mi-row"><div class="mi-label">Input size</div><div class="mi-val">640×640</div></div>
+        <div class="mi-row"><div class="mi-label">Classes</div><div class="mi-val">80 COCO</div></div>
+        <div class="mi-row"><div class="mi-label">Runtime</div><div class="mi-val">onnxruntime-web</div></div>
+        <div class="model-prog"><div class="model-prog-inner" id="model-prog" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <!-- Class filter -->
+    <div class="rp-section">
+      <div class="rp-hdr">
+        <div class="rp-title">Filter Classes</div>
+        <div class="rp-count" style="font-size:8px;cursor:pointer;color:var(--txt2)" onclick="toggleAllClasses()">All / None</div>
+      </div>
+      <div class="class-filter" id="class-filter"></div>
+    </div>
+
+    <!-- Detection log -->
+    <div class="rp-section rp-grow">
+      <div class="rp-hdr">
+        <div class="rp-title">Detections</div>
+        <div class="rp-count" id="det-count-r">0</div>
+      </div>
+      <div class="det-log" id="det-log"></div>
+    </div>
+
+    <!-- Class summary -->
+    <div class="class-summary" id="class-summary">
+      <div class="cs-title">Class summary <span class="cs-scope" id="cs-scope">· this frame</span></div>
+      <div id="cs-rows"></div>
+    </div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  Built by <a href="https://kimmonzon.com" target="_blank" rel="noopener noreferrer">kimmonzon.com</a>
+</footer>
+
+<!-- onnxruntime-web from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+
+<script>
+// ── COCO 80 classes ────────────────────────────────────
+const COCO_CLASSES = [
+  'person','bicycle','car','motorcycle','airplane','bus','train','truck','boat',
+  'traffic light','fire hydrant','stop sign','parking meter','bench','bird','cat',
+  'dog','horse','sheep','cow','elephant','bear','zebra','giraffe','backpack',
+  'umbrella','handbag','tie','suitcase','frisbee','skis','snowboard','sports ball',
+  'kite','baseball bat','baseball glove','skateboard','surfboard','tennis racket',
+  'bottle','wine glass','cup','fork','knife','spoon','bowl','banana','apple',
+  'sandwich','orange','broccoli','carrot','hot dog','pizza','donut','cake','chair',
+  'couch','potted plant','bed','dining table','toilet','tv','laptop','mouse',
+  'remote','keyboard','cell phone','microwave','oven','toaster','sink',
+  'refrigerator','book','clock','vase','scissors','teddy bear','hair drier','toothbrush'
+];
+
+// Generate class colours
+const CLASS_COLORS = COCO_CLASSES.map((_, i) => {
+  const hue = (i * 137.5) % 360;
+  return `hsl(${hue},80%,60%)`;
+});
+
+// ── State ──────────────────────────────────────────────
+let session = null;
+let videoEl, detCanvas, detCtx;
+let rafId = null, running = false, paused = false;
+let frameCount = 0, lastFpsTime = 0, fpsAccum = 0;
+let confThreshold = 0.40;
+let activeClasses = new Set(COCO_CLASSES);
+let lastDetections = [];
+/** Count of boxes on the last processed frame (for “final frame” hint after stop). */
+let lastFrameDetCount = 0;
+/** Cumulative counts per COCO class index while current run is active (increments each processed frame). */
+let sessionClassCounts = {};
+
+// ── ONNX model URL (local server) ─────────────────────
+const MODEL_URL = '/models/yolov8n.onnx';
+
+// ── Init ───────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  videoEl  = document.getElementById('video-el');
+  detCanvas = document.getElementById('det-canvas');
+  detCtx   = detCanvas.getContext('2d');
+
+  buildClassFilter();
+  await loadModel();
+
+  videoEl.addEventListener('loadedmetadata', onVideoLoaded);
+  videoEl.addEventListener('ended', () => { stopDetection('ended'); });
+
+  document.getElementById('file-input').addEventListener('change', onFileSelected);
+
+  const uz = document.getElementById('upload-zone');
+  uz.addEventListener('dragover', e => { e.preventDefault(); uz.classList.add('drag'); });
+  uz.addEventListener('dragleave', () => uz.classList.remove('drag'));
+  uz.addEventListener('drop', e => {
+    e.preventDefault(); uz.classList.remove('drag');
+    const f = e.dataTransfer.files[0];
+    if (f) loadFile(f);
+  });
+});
+
+// ── Model loading ──────────────────────────────────────
+async function loadModel() {
+  setStatus('loading', 'Loading model…');
+  showLoadingOverlay('Loading YOLO model…', 'Loading ~6MB ONNX from this server');
+
+  try {
+    ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
+    ort.env.wasm.simd = true;
+
+    animateProg();
+
+    const resp = await fetch(MODEL_URL);
+    if (!resp.ok) throw new Error('Model not found at /models/yolov8n.onnx — run npm run setup first');
+    const buf = await resp.arrayBuffer();
+    setModelProg(70);
+    session = await ort.InferenceSession.create(buf, {
+      executionProviders: ['wasm'],
+      graphOptimizationLevel: 'all',
+    });
+
+    setModelProg(100);
+    hideLoadingOverlay();
+    setStatus('ready', 'Model ready');
+    document.getElementById('model-status-r').textContent = 'Ready';
+    document.getElementById('backend-name').textContent = 'wasm';
+    console.log('YOLO model loaded. Inputs:', session.inputNames, 'Outputs:', session.outputNames);
+  } catch(err) {
+    console.error(err);
+    setStatus('error', 'Model error');
+    hideLoadingOverlay();
+    showModelError();
+  }
+}
+
+function showModelError() {
+  hideLoadingOverlay();
+  setStatus('error', 'Model missing');
+  document.getElementById('model-status-r').textContent = 'Setup required';
+
+  const existing = document.getElementById('manual-model-btn');
+  if (!existing) {
+    const note = document.createElement('div');
+    note.id = 'manual-model-btn';
+    note.style.cssText = 'background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:4px;padding:12px 14px;margin-bottom:8px;font-family:var(--mono);font-size:9px;line-height:1.9;color:#c4d4e4';
+    note.innerHTML = `
+      <div style="color:var(--amber);font-weight:600;margin-bottom:6px;letter-spacing:.5px">MODEL NOT FOUND</div>
+      Run: <span style="color:var(--green)">npm run setup</span> &nbsp;&nbsp;(or: <span style="color:var(--green)">npm run dev</span>)<br>
+      This downloads yolov8n.onnx automatically.<br><br>
+      <input type="file" id="onnx-file-input" accept=".onnx" style="font-size:9px;color:var(--txt)">
+      <span style="color:var(--txt3)">Optional: load a local .onnx file</span>
+    `;
+    document.querySelector('.video-area').insertBefore(note, document.getElementById('canvas-wrap'));
+    document.getElementById('onnx-file-input').addEventListener('change', async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      showLoadingOverlay('Loading your model…', f.name);
+      try {
+        const buf = await f.arrayBuffer();
+        session = await ort.InferenceSession.create(buf, { executionProviders: ['wasm'] });
+        hideLoadingOverlay();
+        setStatus('ready', 'Model ready');
+        document.getElementById('model-status-r').textContent = 'Ready';
+        note.remove();
+      } catch(err) {
+        hideLoadingOverlay();
+        setStatus('error', 'Model load failed');
+        alert('Error loading model: ' + err.message);
+      }
+    });
+  }
+}
+
+let progInterval = null;
+function animateProg() {
+  let p = 0;
+  progInterval = setInterval(() => {
+    p = Math.min(65, p + Math.random() * 4);
+    setModelProg(p);
+  }, 200);
+}
+function setModelProg(v) {
+  clearInterval(progInterval);
+  document.getElementById('model-prog').style.width = v + '%';
+}
+
+// ── Source tabs ────────────────────────────────────────
+function switchTab(tab) {
+  const isUpload = tab === 'upload';
+  document.getElementById('tab-upload').classList.toggle('active', isUpload);
+  document.getElementById('tab-url').classList.toggle('active', !isUpload);
+  document.getElementById('upload-zone').style.display = isUpload ? '' : 'none';
+  document.getElementById('url-row').style.display     = isUpload ? 'none' : '';
+  document.getElementById('url-load-row').style.display = isUpload ? 'none' : '';
+  if (!isUpload) document.getElementById('url-load-row').style.display = '';
+}
+
+// ── File load ──────────────────────────────────────────
+function onFileSelected(e) {
+  const f = e.target.files[0];
+  if (f) loadFile(f);
+}
+
+function loadFile(file) {
+  const url = URL.createObjectURL(file);
+  loadVideo(url, file.name);
+}
+
+async function loadFromURL() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) return;
+  loadVideo(url, url);
+}
+
+function loadVideo(src, label) {
+  stopDetection();
+  document.getElementById('placeholder').style.display = 'none';
+  videoEl.style.display = 'block';
+  videoEl.src = src;
+  videoEl.load();
+}
+
+function onVideoLoaded() {
+  resizeCanvas();
+  document.getElementById('btn-play').disabled = !session;
+  document.getElementById('btn-pause').disabled = false;
+  document.getElementById('btn-stop').disabled = false;
+  if (session) setStatus('ready', 'Ready — press Start');
+}
+
+// ── Detection loop ─────────────────────────────────────
+function toggleDetection() {
+  if (!running) {
+    startDetection();
+  } else {
+    stopDetection();
+  }
+}
+
+function startDetection() {
+  if (!session || !videoEl.src) return;
+  running = true; paused = false;
+  sessionClassCounts = {};
+  lastFrameDetCount = 0;
+  hideRunSummaryPanel();
+  document.getElementById('cs-scope').textContent = '· this frame (live)';
+  updateClassSummary([]);
+  videoEl.play();
+  document.getElementById('btn-play').textContent = '■ Stop Detection';
+  document.getElementById('btn-play').className = 'ctrl-btn danger';
+  setStatus('running', 'Detecting…');
+  lastFpsTime = performance.now();
+  frameCount = 0; fpsAccum = 0;
+  loopDetect();
+}
+
+function stopDetection(reason) {
+  running = false;
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  videoEl.pause();
+  document.getElementById('btn-play').textContent = '▶ Start Detection';
+  document.getElementById('btn-play').className = 'ctrl-btn primary';
+  if (session) setStatus('ready', 'Stopped');
+  clearCanvas();
+  updateBreakdownPanel([], true);
+  showRunSummaryPanel(reason || 'stop');
+  updateClassSummarySession();
+}
+
+function pauseVideo() {
+  if (videoEl.paused) { videoEl.play(); }
+  else { videoEl.pause(); }
+}
+
+async function loopDetect() {
+  if (!running || videoEl.paused || videoEl.ended) {
+    if (running && !videoEl.ended) rafId = requestAnimationFrame(loopDetect);
+    return;
+  }
+
+  const t0 = performance.now();
+  try {
+    const dets = await runInference();
+    const inferMs = Math.round(performance.now() - t0);
+    lastDetections = dets;
+    drawDetections(dets);
+    updateStats(dets, inferMs);
+    updateDetLog(dets);
+    updateClassSummary(dets);
+    for (const d of dets) {
+      sessionClassCounts[d.cls] = (sessionClassCounts[d.cls] || 0) + 1;
+    }
+    lastFrameDetCount = dets.length;
+    updateBreakdownPanel(dets, false);
+  } catch(e) {
+    console.error('Inference error:', e);
+  }
+
+  frameCount++;
+  document.getElementById('frame-num').textContent = frameCount;
+
+  // FPS calculation
+  const now = performance.now();
+  fpsAccum++;
+  if (now - lastFpsTime >= 500) {
+    const fps = Math.round(fpsAccum / ((now - lastFpsTime) / 1000));
+    document.getElementById('fps-val').textContent = fps;
+    fpsAccum = 0; lastFpsTime = now;
+  }
+
+  rafId = requestAnimationFrame(loopDetect);
+}
+
+// ── ONNX inference ─────────────────────────────────────
+async function runInference() {
+  const INPUT_SIZE = 640;
+  const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+  if (!vw || !vh) return [];
+
+  // Preprocess: draw video frame to offscreen canvas, resize to 640x640
+  const oc = document.createElement('canvas');
+  oc.width = INPUT_SIZE; oc.height = INPUT_SIZE;
+  const octx = oc.getContext('2d');
+
+  // Letterbox: fit video into 640x640 with padding
+  const scale = Math.min(INPUT_SIZE / vw, INPUT_SIZE / vh);
+  const nw = Math.round(vw * scale), nh = Math.round(vh * scale);
+  const padX = Math.floor((INPUT_SIZE - nw) / 2), padY = Math.floor((INPUT_SIZE - nh) / 2);
+  octx.fillStyle = '#808080';
+  octx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+  octx.drawImage(videoEl, padX, padY, nw, nh);
+
+  const imgData = octx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
+  const { data } = imgData;
+
+  // RGB float32 tensor [1, 3, 640, 640] normalized to [0,1]
+  const tensor = new Float32Array(1 * 3 * INPUT_SIZE * INPUT_SIZE);
+  for (let i = 0; i < INPUT_SIZE * INPUT_SIZE; i++) {
+    tensor[i]                           = data[i * 4]     / 255; // R
+    tensor[INPUT_SIZE * INPUT_SIZE + i] = data[i * 4 + 1] / 255; // G
+    tensor[2 * INPUT_SIZE * INPUT_SIZE + i] = data[i * 4 + 2] / 255; // B
+  }
+
+  const inputName = session.inputNames[0];
+  const inputTensor = new ort.Tensor('float32', tensor, [1, 3, INPUT_SIZE, INPUT_SIZE]);
+  const feeds = { [inputName]: inputTensor };
+
+  const results = await session.run(feeds);
+  const outputName = session.outputNames[0];
+  const output = results[outputName];
+
+  // YOLOv8 output: [1, 84, 8400]  (4 coords + 80 classes)
+  return parseDetections(output.data, output.dims, vw, vh, padX, padY, nw, nh, scale);
+}
+
+function parseDetections(data, dims, vw, vh, padX, padY, nw, nh, scale) {
+  // dims: [1, 84, 8400]
+  const numDet = dims[2];
+  const numCls = dims[1] - 4;
+  const detections = [];
+
+  for (let i = 0; i < numDet; i++) {
+    // YOLOv8 format: cx, cy, w, h, cls0, cls1, ..., cls79
+    const cx_raw = data[0 * numDet + i];
+    const cy_raw = data[1 * numDet + i];
+    const w_raw  = data[2 * numDet + i];
+    const h_raw  = data[3 * numDet + i];
+
+    // Find best class
+    let bestConf = 0, bestCls = 0;
+    for (let c = 0; c < numCls; c++) {
+      const conf = data[(4 + c) * numDet + i];
+      if (conf > bestConf) { bestConf = conf; bestCls = c; }
+    }
+
+    if (bestConf < confThreshold) continue;
+    if (!activeClasses.has(COCO_CLASSES[bestCls])) continue;
+
+    // Convert from letterboxed 640x640 back to original video coords
+    const x1_lbox = cx_raw - w_raw / 2;
+    const y1_lbox = cy_raw - h_raw / 2;
+    const x2_lbox = cx_raw + w_raw / 2;
+    const y2_lbox = cy_raw + h_raw / 2;
+
+    const x1 = (x1_lbox - padX) / scale;
+    const y1 = (y1_lbox - padY) / scale;
+    const x2 = (x2_lbox - padX) / scale;
+    const y2 = (y2_lbox - padY) / scale;
+
+    detections.push({
+      x1: Math.max(0, x1), y1: Math.max(0, y1),
+      x2: Math.min(vw, x2), y2: Math.min(vh, y2),
+      conf: bestConf, cls: bestCls,
+      label: COCO_CLASSES[bestCls],
+    });
+  }
+
+  // NMS
+  return nms(detections, 0.45);
+}
+
+function nms(dets, iouThresh) {
+  if (!dets.length) return [];
+  dets.sort((a, b) => b.conf - a.conf);
+  const keep = [];
+  const suppressed = new Uint8Array(dets.length);
+  for (let i = 0; i < dets.length; i++) {
+    if (suppressed[i]) continue;
+    keep.push(dets[i]);
+    for (let j = i + 1; j < dets.length; j++) {
+      if (suppressed[j]) continue;
+      if (iou(dets[i], dets[j]) > iouThresh) suppressed[j] = 1;
+    }
+  }
+  return keep;
+}
+
+function iou(a, b) {
+  const ix1 = Math.max(a.x1, b.x1), iy1 = Math.max(a.y1, b.y1);
+  const ix2 = Math.min(a.x2, b.x2), iy2 = Math.min(a.y2, b.y2);
+  const inter = Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);
+  if (!inter) return 0;
+  const ua = (a.x2-a.x1)*(a.y2-a.y1), ub = (b.x2-b.x1)*(b.y2-b.y1);
+  return inter / (ua + ub - inter);
+}
+
+// ── Drawing ────────────────────────────────────────────
+function resizeCanvas() {
+  detCanvas.width  = videoEl.videoWidth  || videoEl.clientWidth;
+  detCanvas.height = videoEl.videoHeight || videoEl.clientHeight;
+  detCanvas.style.width  = '100%';
+  detCanvas.style.height = '100%';
+}
+
+function clearCanvas() {
+  detCtx.clearRect(0, 0, detCanvas.width, detCanvas.height);
+}
+
+function drawDetections(dets) {
+  const W = detCanvas.width, H = detCanvas.height;
+  const sx = W / videoEl.videoWidth, sy = H / videoEl.videoHeight;
+  detCtx.clearRect(0, 0, W, H);
+
+  dets.forEach(d => {
+    const color = CLASS_COLORS[d.cls];
+    const x1 = d.x1 * sx, y1 = d.y1 * sy;
+    const bw = (d.x2 - d.x1) * sx, bh = (d.y2 - d.y1) * sy;
+
+    // Box
+    detCtx.strokeStyle = color;
+    detCtx.lineWidth = 1.5;
+    detCtx.strokeRect(x1, y1, bw, bh);
+
+    // Corner accents
+    const cs = Math.min(12, bw * 0.2, bh * 0.2);
+    detCtx.lineWidth = 2.5;
+    [[x1,y1,1,1],[x1+bw,y1,-1,1],[x1,y1+bh,1,-1],[x1+bw,y1+bh,-1,-1]].forEach(([cx,cy,dx,dy]) => {
+      detCtx.beginPath();
+      detCtx.moveTo(cx + dx*cs, cy); detCtx.lineTo(cx, cy); detCtx.lineTo(cx, cy + dy*cs);
+      detCtx.stroke();
+    });
+
+    // Label background
+    const label = `${d.label} ${Math.round(d.conf * 100)}%`;
+    detCtx.font = 'bold 10px IBM Plex Mono';
+    const tw = detCtx.measureText(label).width + 8;
+    const lh = 15;
+    const ly = y1 > lh + 2 ? y1 - lh - 2 : y1 + 2;
+    detCtx.fillStyle = color;
+    detCtx.fillRect(x1 - .5, ly, tw, lh);
+    detCtx.fillStyle = '#000';
+    detCtx.fillText(label, x1 + 3, ly + 10);
+  });
+}
+
+function getSessionSortedEntries(sess) {
+  return Object.entries(sess || {})
+    .map(([k, v]) => [Number(k), v])
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]);
+}
+
+function buildConicTurns(entries, total) {
+  if (!total || !entries.length) return '';
+  let turn = 0;
+  const parts = [];
+  for (const [cls, cnt] of entries) {
+    const frac = cnt / total;
+    const next = turn + frac;
+    parts.push(`${CLASS_COLORS[cls]} ${turn}turn ${next}turn`);
+    turn = next;
+  }
+  return `conic-gradient(${parts.join(',')})`;
+}
+
+function hideRunSummaryPanel() {
+  document.getElementById('run-summary-panel').classList.remove('visible');
+}
+
+/** reason: 'stop' | 'ended' — uses sessionClassCounts snapshot */
+function showRunSummaryPanel(reason) {
+  const panel = document.getElementById('run-summary-panel');
+  const ring = document.getElementById('summary-donut-ring');
+  const entries = getSessionSortedEntries(sessionClassCounts);
+  const total = entries.reduce((s, [, c]) => s + c, 0);
+  if (total === 0) {
+    panel.classList.remove('visible');
+    ring.classList.remove('has-data');
+    ring.style.background = '';
+    return;
+  }
+  document.getElementById('summary-reason').textContent =
+    reason === 'ended'
+      ? 'Video ended — all object events this run'
+      : 'Detection stopped — all object events this run';
+  document.getElementById('summary-total-num').textContent = total;
+  ring.classList.add('has-data');
+  ring.style.background = buildConicTurns(entries, total);
+
+  const maxVal = entries[0][1];
+  const bars = document.getElementById('summary-bars');
+  bars.innerHTML = entries
+    .map(([cls, c]) => {
+      const pct = maxVal ? Math.round((c / maxVal) * 100) : 0;
+      const nm = COCO_CLASSES[cls];
+      return `<div class="summary-bar-row"><div class="summary-bar-top"><span class="summary-bar-name" title="${nm}">${nm}<span class="muted"> (${cls})</span></span><span class="summary-bar-cnt">${c}</span></div><div class="summary-bar-track"><div class="summary-bar-fill" style="width:${pct}%;background:${CLASS_COLORS[cls]}"></div></div></div>`;
+    })
+    .join('');
+  panel.classList.add('visible');
+}
+
+// ── UI updates ─────────────────────────────────────────
+function updateStats(dets, inferMs) {
+  document.getElementById('det-count').textContent = dets.length;
+  document.getElementById('det-count-r').textContent = dets.length;
+  document.getElementById('infer-ms').textContent = inferMs + 'ms';
+}
+
+const DET_LOG_MAX = 400;
+function updateDetLog(dets) {
+  const log = document.getElementById('det-log');
+  log.innerHTML = '';
+  if (!dets.length) {
+    log.innerHTML = '<div style="padding:12px 13px;font-family:var(--mono);font-size:9px;color:var(--txt3)">No detections</div>';
+    return;
+  }
+  const slice = dets.slice(0, DET_LOG_MAX);
+  slice.forEach(d => {
+    const color = CLASS_COLORS[d.cls];
+    const w = Math.round(d.x2 - d.x1), h = Math.round(d.y2 - d.y1);
+    const el = document.createElement('div');
+    el.className = 'det-item';
+    el.innerHTML = `
+      <div class="det-color" style="background:${color}"></div>
+      <div class="det-info">
+        <div class="det-class">${d.label}</div>
+        <div class="det-conf">${(d.conf * 100).toFixed(1)}% confidence</div>
+        <div class="det-conf-bar"><div class="det-conf-fill" style="width:${d.conf*100}%;background:${color}"></div></div>
+        <div class="det-bbox">${w}×${h}px @ (${Math.round(d.x1)},${Math.round(d.y1)})</div>
+      </div>`;
+    log.appendChild(el);
+  });
+  if (dets.length > DET_LOG_MAX) {
+    const foot = document.createElement('div');
+    foot.style.cssText = 'padding:10px 13px;font-family:var(--mono);font-size:8px;color:var(--txt3);border-top:1px solid var(--wire)';
+    foot.textContent = `+ ${dets.length - DET_LOG_MAX} more rows not rendered (scroll shows ${DET_LOG_MAX}); total count in header is full ${dets.length}.`;
+    log.appendChild(foot);
+  }
+}
+
+function updateClassSummary(dets) {
+  document.getElementById('cs-scope').textContent = '· this frame (live)';
+  const counts = {};
+  dets.forEach((d) => { counts[d.label] = (counts[d.label] || 0) + 1; });
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const max = sorted[0]?.[1] || 1;
+  const cs = document.getElementById('cs-rows');
+  cs.innerHTML = '';
+  if (!sorted.length) {
+    cs.innerHTML = '<div style="font-size:8px;color:var(--txt3);padding:4px 0">No classes on this frame.</div>';
+    return;
+  }
+  sorted.forEach(([cls, cnt]) => {
+    const color = CLASS_COLORS[COCO_CLASSES.indexOf(cls)];
+    cs.innerHTML += `
+      <div class="cs-row">
+        <div class="cs-dot" style="background:${color}"></div>
+        <div class="cs-label">${cls}</div>
+        <div class="cs-bar-w"><div class="cs-bar-f" style="width:${(cnt / max) * 100}%;background:${color}"></div></div>
+        <div class="cs-cnt">${cnt}</div>
+      </div>`;
+  });
+}
+
+/** After stop: full list from session totals (not “last frame only”). */
+function updateClassSummarySession() {
+  document.getElementById('cs-scope').textContent = '· full run (all frames summed)';
+  const entries = getSessionSortedEntries(sessionClassCounts);
+  const cs = document.getElementById('cs-rows');
+  cs.innerHTML = '';
+  if (!entries.length) {
+    cs.innerHTML = '<div style="font-size:8px;color:var(--txt3)">No totals for this run.</div>';
+    return;
+  }
+  const max = entries[0][1];
+  entries.forEach(([clsIdx, cnt]) => {
+    const nm = COCO_CLASSES[clsIdx];
+    const color = CLASS_COLORS[clsIdx];
+    cs.innerHTML += `
+      <div class="cs-row">
+        <div class="cs-dot" style="background:${color}"></div>
+        <div class="cs-label">${nm} <span style="color:var(--txt3);font-size:7px">(${clsIdx})</span></div>
+        <div class="cs-bar-w"><div class="cs-bar-f" style="width:${(cnt / max) * 100}%;background:${color}"></div></div>
+        <div class="cs-cnt">${cnt}</div>
+      </div>`;
+  });
+}
+
+function updateBreakdownPanel(dets, stopped) {
+  const wrap = document.getElementById('stats-breakdown');
+  const ring = document.getElementById('donut-ring');
+  const frameTotalEl = document.getElementById('donut-frame-total');
+  const sessionTotalEl = document.getElementById('donut-session-total');
+  const scopeLabelEl = document.getElementById('donut-scope-label');
+  const listEl = document.getElementById('breakdown-list');
+  const personEl = document.getElementById('breakdown-person');
+  const sessionBody = document.getElementById('breakdown-session-body');
+
+  const frameTotal = dets.length;
+  const sessionSum = Object.values(sessionClassCounts).reduce((a, b) => a + b, 0);
+  const sessEntries = getSessionSortedEntries(sessionClassCounts);
+
+  const countMap = new Map();
+  for (const d of dets) countMap.set(d.cls, (countMap.get(d.cls) || 0) + 1);
+
+  if (stopped && sessionSum > 0) {
+    wrap.classList.remove('empty');
+    scopeLabelEl.textContent = 'last run total';
+    frameTotalEl.textContent = sessionSum;
+    sessionTotalEl.textContent = `Final frame: ${lastFrameDetCount} box${lastFrameDetCount === 1 ? '' : 'es'}`;
+    ring.classList.add('has-data');
+    ring.style.background = buildConicTurns(sessEntries, sessionSum);
+    personEl.style.display = 'none';
+    listEl.innerHTML = sessEntries
+      .map(([cls, cnt]) => {
+        const name = COCO_CLASSES[cls];
+        return `<div class="br-row"><span class="br-swatch" style="background:${CLASS_COLORS[cls]}"></span><span class="br-id">${cls}</span><span class="br-name" title="${name}">${name}</span><span class="br-cnt">×${cnt}</span></div>`;
+      })
+      .join('');
+  } else if (stopped) {
+    wrap.classList.add('empty');
+    scopeLabelEl.textContent = 'this frame';
+    frameTotalEl.textContent = 0;
+    sessionTotalEl.textContent = 'Σ session: 0';
+    ring.classList.remove('has-data');
+    ring.style.background = '';
+    personEl.style.display = 'none';
+    listEl.innerHTML = '<span style="color:var(--txt3)">No totals this run.</span>';
+  } else {
+    wrap.classList.remove('empty');
+    scopeLabelEl.textContent = 'this frame';
+    frameTotalEl.textContent = frameTotal;
+    sessionTotalEl.textContent = `Σ session: ${sessionSum}`;
+    if (frameTotal > 0) {
+      ring.classList.add('has-data');
+      const entries = [...countMap.entries()].sort((a, b) => b[1] - a[1]);
+      let turn = 0;
+      const parts = [];
+      for (const [cls, cnt] of entries) {
+        const frac = cnt / frameTotal;
+        const next = turn + frac;
+        parts.push(`${CLASS_COLORS[cls]} ${turn}turn ${next}turn`);
+        turn = next;
+      }
+      ring.style.background = `conic-gradient(${parts.join(',')})`;
+    } else {
+      ring.classList.remove('has-data');
+      ring.style.background = '';
+    }
+
+    const persons = dets.filter((d) => d.cls === 0).sort((a, b) => a.y1 - b.y1 || a.x1 - b.x1);
+    if (persons.length > 0) {
+      personEl.style.display = '';
+      const maxShow = 16;
+      const badges = persons.slice(0, maxShow).map((_, i) => `<span class="pid">#${i + 1}</span>`).join('');
+      const more = persons.length > maxShow ? ` <span style="color:var(--txt3)">+${persons.length - maxShow}</span>` : '';
+      personEl.innerHTML = `<strong>Person</strong> · COCO <strong>id 0</strong> · frame: <strong>${persons.length}</strong> · session Σ: <strong>${sessionClassCounts[0] || 0}</strong><div style="margin-top:4px">${badges}${more}</div><div style="color:var(--txt3);font-size:7px;margin-top:3px">#1… order top→bottom, then left→right (this frame only)</div>`;
+    } else {
+      personEl.style.display = 'none';
+    }
+
+    if (!frameTotal) {
+      listEl.innerHTML = '<span style="color:var(--txt3)">No objects this frame (try confidence or class filters).</span>';
+    } else {
+      const entries = [...countMap.entries()].sort((a, b) => b[1] - a[1]);
+      listEl.innerHTML = entries
+        .map(([cls, cnt]) => {
+          const name = COCO_CLASSES[cls];
+          return `<div class="br-row"><span class="br-swatch" style="background:${CLASS_COLORS[cls]}"></span><span class="br-id">${cls}</span><span class="br-name" title="${name}">${name}</span><span class="br-cnt">×${cnt}</span></div>`;
+        })
+        .join('');
+    }
+  }
+
+  if (!sessEntries.length) {
+    sessionBody.innerHTML = '<span style="color:var(--txt3)">—</span>';
+  } else {
+    sessionBody.innerHTML = sessEntries
+      .slice(0, 14)
+      .map(([cls, c]) => `<span style="white-space:nowrap">${COCO_CLASSES[cls]} <span style="color:var(--txt3)">(${cls})</span> <span style="color:var(--amber)">×${c}</span></span>`)
+      .join(' <span style="color:var(--wire2)">·</span> ');
+  }
+}
+
+// ── Class filter ───────────────────────────────────────
+function buildClassFilter() {
+  const container = document.getElementById('class-filter');
+  COCO_CLASSES.forEach((cls, i) => {
+    const tag = document.createElement('div');
+    tag.className = 'ctag active';
+    tag.textContent = cls;
+    tag.style.cssText = `background:${CLASS_COLORS[i]};color:#000;border-color:transparent`;
+    tag.onclick = () => {
+      if (activeClasses.has(cls)) {
+        activeClasses.delete(cls);
+        tag.className = 'ctag';
+        tag.style.cssText = '';
+      } else {
+        activeClasses.add(cls);
+        tag.className = 'ctag active';
+        tag.style.cssText = `background:${CLASS_COLORS[i]};color:#000;border-color:transparent`;
+      }
+    };
+    container.appendChild(tag);
+  });
+}
+
+function toggleAllClasses() {
+  const allActive = activeClasses.size === COCO_CLASSES.length;
+  if (allActive) {
+    activeClasses.clear();
+    document.querySelectorAll('.ctag').forEach(t => { t.className='ctag'; t.style.cssText=''; });
+  } else {
+    COCO_CLASSES.forEach(c => activeClasses.add(c));
+    document.querySelectorAll('.ctag').forEach((t, i) => {
+      t.className = 'ctag active';
+      t.style.cssText = `background:${CLASS_COLORS[i]};color:#000;border-color:transparent`;
+    });
+  }
+}
+
+// ── Misc ───────────────────────────────────────────────
+function updateConf(v) {
+  confThreshold = v / 100;
+  document.getElementById('conf-val').textContent = confThreshold.toFixed(2);
+}
+
+function captureFrame() {
+  if (!videoEl.src) return;
+  const oc = document.createElement('canvas');
+  oc.width = videoEl.videoWidth; oc.height = videoEl.videoHeight;
+  const octx = oc.getContext('2d');
+  octx.drawImage(videoEl, 0, 0);
+  octx.drawImage(detCanvas, 0, 0, oc.width, oc.height);
+  const a = document.createElement('a');
+  a.href = oc.toDataURL('image/png');
+  a.download = `yolo_frame_${frameCount}.png`;
+  a.click();
+}
+
+function setStatus(type, text) {
+  const pill = document.getElementById('status-pill');
+  const span = document.getElementById('status-text');
+  pill.className = `status-pill ${type}`;
+  span.textContent = text;
+}
+
+function showLoadingOverlay(title, sub) {
+  const ov = document.getElementById('loading-overlay');
+  document.getElementById('loading-text').textContent = title;
+  document.getElementById('loading-sub').textContent = sub;
+  ov.style.display = 'flex';
+}
+function hideLoadingOverlay() {
+  document.getElementById('loading-overlay').style.display = 'none';
+}
+</script>
+</body>
+</html>

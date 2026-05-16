@@ -1,0 +1,12 @@
+{
+  "name": "yolo-detector",
+  "version": "1.0.0",
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "start": "node server.js",
+    "dev": "node scripts/setup.js && node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

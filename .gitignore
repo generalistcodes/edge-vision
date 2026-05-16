@@ -1,0 +1,5 @@
+node_modules/
+public/models/*
+!public/models/yolov8n.onnx
+!public/models/.gitkeep
+*.pt
